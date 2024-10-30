@@ -167,8 +167,10 @@ public class JsonpathParserPlugin
                         }
                     };
                     final JsonNode json;
+                    final JsonNode rootNode;
                     try {
-                        json = JsonPath.using(JSON_PATH_CONFIG).parse(toParse).read(jsonRoot, JsonNode.class);
+                        rootNode = JsonPath.using(JSON_PATH_CONFIG).parse(toParse).read("$", JsonNode.class);
+                        json = JsonPath.using(JSON_PATH_CONFIG).parse(rootNode).read(jsonRoot, JsonNode.class);
                     }
                     catch (PathNotFoundException e) {
                         skipOrThrow(new DataException(format(Locale.ENGLISH,
@@ -179,11 +181,11 @@ public class JsonpathParserPlugin
                         skipOrThrow(new DataException(e), stopOnInvalidRecord);
                         continue;
                     }
-
+                    Map<Column, JsonNode> additionalValues = createAdditionalColumns(jsonPathMap, rootNode);
                     if (json.isArray()) {
                         for (JsonNode recordValue : json) {
                             try {
-                                createRecordFromJson(recordValue, schema, jsonPathMap, visitor, pageBuilder);
+                                createRecordFromJson(recordValue, schema, jsonPathMap, visitor, pageBuilder, additionalValues);
                             }
                             catch (DataException e) {
                                 skipOrThrow(e, stopOnInvalidRecord);
@@ -193,7 +195,7 @@ public class JsonpathParserPlugin
                     }
                     else {
                         try {
-                            createRecordFromJson(json, schema, jsonPathMap, visitor, pageBuilder);
+                            createRecordFromJson(json, schema, jsonPathMap, visitor, pageBuilder, additionalValues);
                         }
                         catch (DataException e) {
                             skipOrThrow(e, stopOnInvalidRecord);
@@ -207,6 +209,23 @@ public class JsonpathParserPlugin
         }
     }
 
+    private Map<Column, JsonNode> createAdditionalColumns(Map<Column, String> jsonPathMap, JsonNode rootNode)
+    {
+        Map<Column, JsonNode> additionalColumns = new HashMap<>();
+        jsonPathMap.forEach((column, path) -> {
+           if (path.startsWith("$")) {
+               try {
+                   additionalColumns.put(
+                           column,
+                           JsonPath.using(JSON_PATH_CONFIG).parse(rootNode).read(path, JsonNode.class)
+                   );
+               } catch (PathNotFoundException e) {
+                   logger.warn("Failed to get %s", path);
+                }
+           }
+        });
+        return Collections.unmodifiableMap(additionalColumns);
+    }
     private Map<Column, String> createJsonPathMap(PluginTask task, Schema schema)
     {
         Map<Column, String> columnMap = new HashMap<>();
@@ -220,7 +239,7 @@ public class JsonpathParserPlugin
         return Collections.unmodifiableMap(columnMap);
     }
 
-    private void createRecordFromJson(JsonNode json, Schema schema, Map<Column, String> jsonPathMap, ColumnVisitorImpl visitor, PageBuilder pageBuilder)
+    private void createRecordFromJson(JsonNode json, Schema schema, Map<Column, String> jsonPathMap, ColumnVisitorImpl visitor, PageBuilder pageBuilder, Map<Column, JsonNode> additionalValues)
     {
         if (json.getNodeType() != JsonNodeType.OBJECT) {
             throw new JsonRecordValidateException(format(Locale.ENGLISH,
@@ -229,7 +248,7 @@ public class JsonpathParserPlugin
 
         for (Column column : schema.getColumns()) {
             JsonNode value = null;
-            if (jsonPathMap.containsKey(column)) {
+            if (jsonPathMap.containsKey(column) && !jsonPathMap.get(column).startsWith("$")) {
                 try {
                     value = JsonPath.using(JSON_PATH_CONFIG).parse(json).read(jsonPathMap.get(column));
                 }
@@ -239,10 +258,16 @@ public class JsonpathParserPlugin
             }
             else {
                 value = json.get(column.getName());
+
             }
             visitor.setValue(value);
             column.visit(visitor);
         }
+        additionalValues.forEach( (k, v) -> {
+                    visitor.setValue(v);
+                    k.visit(visitor);
+                }
+        );
 
         pageBuilder.addRecord();
     }
