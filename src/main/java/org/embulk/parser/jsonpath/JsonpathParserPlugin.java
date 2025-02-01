@@ -2,6 +2,7 @@ package org.embulk.parser.jsonpath;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeType;
+import com.fasterxml.jackson.databind.node.TextNode;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.InvalidJsonException;
 import com.jayway.jsonpath.JsonPath;
@@ -126,6 +127,10 @@ public class JsonpathParserPlugin
         @Config("date")
         @ConfigDefault("null")
         Optional<String> getDate();
+
+        @Config("default")
+        @ConfigDefault("null")
+        Optional<String> getDefault();
     }
 
     @Override
@@ -150,6 +155,7 @@ public class JsonpathParserPlugin
         logger.info("JSONPath = " + jsonRoot);
         final TimestampFormatter[] timestampParsers = newTimestampColumnFormatters(task, getSchemaConfig(task));
         final Map<Column, String> jsonPathMap = createJsonPathMap(task, schema);
+        final Map<Column, JsonNode> defaultMap = createDefaultMap(task, schema);
         final boolean stopOnInvalidRecord = task.getStopOnInvalidRecord();
 
         // TODO: Use Exec.getPageBuilder after dropping v0.9
@@ -184,7 +190,7 @@ public class JsonpathParserPlugin
                     if (json.isArray()) {
                         for (JsonNode recordValue : json) {
                             try {
-                                createRecordFromJson(rootNode, recordValue, schema, jsonPathMap, visitor, pageBuilder);
+                                createRecordFromJson(rootNode, recordValue, schema, jsonPathMap, defaultMap, visitor, pageBuilder);
                             }
                             catch (DataException e) {
                                 skipOrThrow(e, stopOnInvalidRecord);
@@ -194,7 +200,7 @@ public class JsonpathParserPlugin
                     }
                     else {
                         try {
-                            createRecordFromJson(rootNode, json, schema, jsonPathMap, visitor, pageBuilder);
+                            createRecordFromJson(rootNode, json, schema, jsonPathMap, defaultMap, visitor, pageBuilder);
                         }
                         catch (DataException e) {
                             skipOrThrow(e, stopOnInvalidRecord);
@@ -221,7 +227,20 @@ public class JsonpathParserPlugin
         return Collections.unmodifiableMap(columnMap);
     }
 
-    private void createRecordFromJson(JsonNode root, JsonNode json, Schema schema, Map<Column, String> jsonPathMap, ColumnVisitorImpl visitor, PageBuilder pageBuilder)
+    private Map<Column, JsonNode> createDefaultMap(PluginTask task, Schema schema)
+    {
+        Map<Column, JsonNode> columnMap = new HashMap<>();
+        for (int i = 0; i < schema.size(); i++) {
+            ColumnConfig config = getSchemaConfig(task).getColumn(i);
+            JsonpathColumnOption option = CONFIG_MAPPER.map(config.getOption(), JsonpathColumnOption.class);
+            if (option.getDefault().isPresent()) {
+                columnMap.put(schema.getColumn(i), new TextNode(option.getDefault().get()));
+            }
+        }
+        return Collections.unmodifiableMap(columnMap);
+    }
+
+    private void createRecordFromJson(JsonNode root, JsonNode json, Schema schema, Map<Column, String> jsonPathMap, Map<Column, JsonNode> defaultMap, ColumnVisitorImpl visitor, PageBuilder pageBuilder)
     {
         if (json.getNodeType() != JsonNodeType.OBJECT) {
             throw new JsonRecordValidateException(format(Locale.ENGLISH,
@@ -236,11 +255,17 @@ public class JsonpathParserPlugin
                     value = JsonPath.using(JSON_PATH_CONFIG).parse(path.startsWith("$") ? root : json).read(path, JsonNode.class);
                 }
                 catch (PathNotFoundException e) {
-                    // pass (value is nullable)
+                    if (defaultMap.containsKey(column)) {
+                        value = defaultMap.get(column);
+                    }
                 }
             }
             else {
                 value = json.get(column.getName());
+                // NOTE: When json doesn't include key, value is null. (When json has null value, value is NullNode)
+                if (value == null && defaultMap.containsKey(column)) {
+                    value = defaultMap.get(column);
+                }
             }
             visitor.setValue(value);
             column.visit(visitor);

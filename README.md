@@ -25,6 +25,7 @@ The JSON with [JSONPath](http://goessner.net/articles/JsonPath/) parser plugin f
 * **format**: Format of the timestamp if type is timestamp (string, default: default_format)
 * **typecast**: Whether cast values or not (boolean, default: default_typecast)
 * **path**: JSON ppath for specific column. (string, default: `null`)
+* **default**: If name or path does not exist, this value is used. If key or path exists and its value is null, this value is not used. (string, default: `null`)
 
 ## Example
 
