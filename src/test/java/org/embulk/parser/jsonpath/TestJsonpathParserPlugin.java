@@ -324,6 +324,49 @@ public class TestJsonpathParserPlugin
     }
 
     @Test
+    public void useNormalWithDefault()
+            throws Exception
+    {
+        SchemaConfig schema = schema(
+                column("_c0", BOOLEAN, config().set("default", true)),
+                column("_c1", LONG, config().set("default", 10L)),
+                column("_c2", DOUBLE, config().set("default", 0.1)),
+                column("_c3", STRING, config().set("default", "embulk")),
+                column("_c4", TIMESTAMP, config().set("format", "%Y-%m-%d %H:%M:%S %Z").set("default", "2016-01-01 00:00:00 UTC")),
+                column("_c5", JSON, config().set("default", "{\"k\":\"v\"}")));
+        ConfigSource config = this.config.deepCopy().set("columns", schema);
+
+        transaction(config, fileInput(
+                "[",
+                "{},",
+                "{\"_c0\":null,\"_c1\":null,\"_c2\":null,\"_c3\":null,\"_c4\":null,\"_c5\":null}",
+                "]"
+        ));
+
+        List<Object[]> records = Pages.toObjects(schema.toSchema(), output.pages);
+        assertEquals(2, records.size());
+
+        Object[] record;
+        {
+            record = records.get(0);
+            assertEquals(true, record[0]);
+            assertEquals(10L, record[1]);
+            assertEquals(0.1, (Double) record[2], 0.0001);
+            assertEquals("embulk", record[3]);
+            assertEquals(Timestamp.ofEpochSecond(1451606400L), record[4]);
+            assertEquals(newMap(newString("k"), newString("v")), record[5]);
+        }
+        {
+            record = records.get(1);
+            for (int i = 0; i < 6; i++) {
+                assertNull(record[i]);
+            }
+        }
+
+        recreatePageOutput();
+    }
+
+    @Test
     public void useNormalWithRootPath()
             throws Exception
     {
@@ -408,6 +451,53 @@ public class TestJsonpathParserPlugin
             assertEquals("エンバルク", record[3]);
             assertEquals(Timestamp.ofEpochSecond(1451606400L), record[4]);
             assertEquals(newArray(newString("e0"), newString("e1")), record[5]);
+            assertEquals("embulk", record[6]);
+        }
+
+        recreatePageOutput();
+    }
+
+    @Test
+    public void useJsonPathWithDefault()
+            throws Exception
+    {
+        SchemaConfig schema = schema(
+                column("__c0", BOOLEAN, config().set("path", "_c0").set("default", true)),
+                column("__c1", LONG, config().set("path", "_c1").set("default", 10L)),
+                column("__c2", DOUBLE, config().set("path", "_c2").set("default", 0.1)),
+                column("__c3", STRING, config().set("path", "_c3").set("default", "embulk")),
+                column("__c4", TIMESTAMP, config().set("format", "%Y-%m-%d %H:%M:%S %Z").set("path", "_c4").set("default", "2016-01-01 00:00:00 UTC")),
+                column("__c5", JSON, config().set("path", "_c5").set("default", "{\"k\":\"v\"}")),
+                column("__c6", STRING, config().set("path", "$[0]._c3").set("default", "embulk")));
+
+        ConfigSource config = this.config.deepCopy().set("columns", schema);
+
+        transaction(config, fileInput(
+                "[",
+                "{},",
+                "{\"_c0\":null,\"_c1\":null,\"_c2\":null,\"_c3\":null,\"_c4\":null,\"_c5\":null,\"_c6\":null}",
+                "]"
+        ));
+
+        List<Object[]> records = Pages.toObjects(schema.toSchema(), output.pages);
+        assertEquals(2, records.size());
+
+        Object[] record;
+        {
+            record = records.get(0);
+            assertEquals(true, record[0]);
+            assertEquals(10L, record[1]);
+            assertEquals(0.1, (Double) record[2], 0.0001);
+            assertEquals("embulk", record[3]);
+            assertEquals(Timestamp.ofEpochSecond(1451606400L), record[4]);
+            assertEquals(newMap(newString("k"), newString("v")), record[5]);
+            assertEquals("embulk", record[6]);
+        }
+        {
+            record = records.get(1);
+            for (int i = 0; i < 6; i++) {
+                assertNull(record[i]);
+            }
             assertEquals("embulk", record[6]);
         }
 
