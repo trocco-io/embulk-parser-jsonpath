@@ -371,10 +371,11 @@ public class TestJsonpathParserPlugin
             throws Exception
     {
         SchemaConfig schema = schema(
-                column("__c0", BOOLEAN, config().set("path", "$._c0")), column("__c1", LONG, config().set("path", "$._c1")),
-                column("__c2", DOUBLE, config().set("path", "$._c2")), column("__c3", STRING, config().set("path", "$._c3")),
-                column("__c4", TIMESTAMP, config().set("format", "%Y-%m-%d %H:%M:%S %Z").set("path", "$._c4")),
-                column("__c5", JSON, config().set("path", "$._c5")));
+                column("__c0", BOOLEAN, config().set("path", "_c0")), column("__c1", LONG, config().set("path", "_c1")),
+                column("__c2", DOUBLE, config().set("path", "_c2")), column("__c3", STRING, config().set("path", "_c3")),
+                column("__c4", TIMESTAMP, config().set("format", "%Y-%m-%d %H:%M:%S %Z").set("path", "_c4")),
+                column("__c5", JSON, config().set("path", "_c5")),
+                column("__c6", STRING, config().set("path", "$[0]._c3")));
         ConfigSource config = this.config.deepCopy().set("columns", schema);
 
         transaction(config, fileInput(
@@ -397,6 +398,7 @@ public class TestJsonpathParserPlugin
             assertEquals("embulk", record[3]);
             assertEquals(Timestamp.ofEpochSecond(1451606400L), record[4]);
             assertEquals(newMap(newString("k"), newString("v")), record[5]);
+            assertEquals("embulk", record[6]);
         }
         {
             record = records.get(1);
@@ -406,6 +408,7 @@ public class TestJsonpathParserPlugin
             assertEquals("エンバルク", record[3]);
             assertEquals(Timestamp.ofEpochSecond(1451606400L), record[4]);
             assertEquals(newArray(newString("e0"), newString("e1")), record[5]);
+            assertEquals("embulk", record[6]);
         }
 
         recreatePageOutput();
@@ -416,10 +419,10 @@ public class TestJsonpathParserPlugin
             throws Exception
     {
         SchemaConfig schema = schema(
-                column("__c0", BOOLEAN, config().set("path", "$._c0")), column("__c1", LONG, config().set("path", "$._c1")),
-                column("__c2", DOUBLE, config().set("path", "$._c2")), column("__c3", STRING, config().set("path", "$._c3")),
-                column("__c4", TIMESTAMP, config().set("format", "%Y-%m-%d %H:%M:%S %Z").set("path", "$._c4")),
-                column("__c5", JSON, config().set("path", "$._c5")));
+                column("__c0", BOOLEAN, config().set("path", "_c0")), column("__c1", LONG, config().set("path", "_c1")),
+                column("__c2", DOUBLE, config().set("path", "_c2")), column("__c3", STRING, config().set("path", "_c3")),
+                column("__c4", TIMESTAMP, config().set("format", "%Y-%m-%d %H:%M:%S %Z").set("path", "_c4")),
+                column("__c5", JSON, config().set("path", "_c5")), column("__c6", STRING, config().set("path", "$[0]._c3")));
         ConfigSource config = this.config.deepCopy().set("columns", schema);
 
         transaction(config, fileInput(
@@ -435,7 +438,7 @@ public class TestJsonpathParserPlugin
         assertEquals(4, records.size());
 
         for (Object[] record : records) {
-            for (int i = 0; i < 6; i++) {
+            for (int i = 0; i < 7; i++) {
                 assertNull(record[i]);
             }
         }
@@ -445,7 +448,7 @@ public class TestJsonpathParserPlugin
     public void notArrayObject()
             throws Exception
     {
-        SchemaConfig schema = schema(column("__c0", STRING, config().set("path", "$._c0")));
+        SchemaConfig schema = schema(column("__c0", STRING, config().set("path", "_c0")));
         ConfigSource config = this.config.deepCopy().set("columns", schema);
 
         transaction(config, fileInput("{ \"_c0\": \"embulk\" }"));
@@ -459,7 +462,7 @@ public class TestJsonpathParserPlugin
     public void rootPathJsonIsObject()
             throws Exception
     {
-        SchemaConfig schema = schema(column("__c0", STRING, config().set("path", "$._c0")));
+        SchemaConfig schema = schema(column("__c0", STRING, config().set("path", "_c0")));
         ConfigSource config = this.config.deepCopy().set("columns", schema).set("root", "$[0].root");
 
         transaction(config, fileInput(
@@ -477,7 +480,7 @@ public class TestJsonpathParserPlugin
     public void rootPathJsonIsNotArrayOrObject()
     {
         assertThrows(DataException.class, () -> {
-            SchemaConfig schema = schema(column("__c0", STRING, config().set("path", "$._c0")));
+            SchemaConfig schema = schema(column("__c0", STRING, config().set("path", "_c0")));
             ConfigSource config = this.config.deepCopy()
                     .set("columns", schema)
                     .set("root", "$[0].root")
